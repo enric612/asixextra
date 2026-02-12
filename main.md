@@ -94,10 +94,28 @@ sudo apt install python3-pip python3-venv git -y
 3.  Configurar la interfície i el servei SSH:
 
 ```bash
+# Entrar en mode configuració
 configure
+
+# 1. CONFIGURACIÓ LAN (Gestió NetDevOps - eth0)
 set interfaces ethernet eth0 address '172.16.1.1/24'
-set interfaces ethernet eth0 description 'MGMT_LINK'
+set interfaces ethernet eth0 description 'LAN_NETDEVOPS'
+
+# 2. CONFIGURACIÓ WAN (Xarxa de classe - eth1)
+# Suposem que l'adaptador 2 de la VM està en mode Bridged/NAT cap a la 192.168.13.X
+set interfaces ethernet eth1 address 'dhcp'
+set interfaces ethernet eth1 description 'WAN_CLASSE'
+
+# 3. SERVEIS I ACCÉS
 set service ssh port '22'
+set system ntp server pool.ntp.org
+
+# 4. ENRUTAMENT I NAT (Opcional: per permetre que la xarxa interna isca a internet)
+set nat source rule 100 outbound-interface 'eth1'
+set nat source rule 100 source address '172.16.1.0/24'
+set nat source rule 100 translation address 'masquerade'
+
+# Aplicar i guardar
 commit
 save
 exit
