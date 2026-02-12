@@ -1,189 +1,230 @@
-UNITAT DIDÀCTICA: INTRODUCCIÓ AL NETDEVOPS AMB PYTHON
-=====================================================
+NetDevOps representa l'aplicació de metodologies DevOps (Development and Operations) a l'administració d'infraestructures de xarxa. Aquest paradigma transiciona de la gestió manual (CLI, interacció humana directa) a l'automatització programàtica, tractant la configuració de xarxa com a codi (Infrastructure as Code - IaC).
 
-1\. Introducció Detallada a NetDevOps
--------------------------------------
+## 1.1 El rol de Python en l'Automatització
 
-NetDevOps no és una eina, sinó una **cultura operativa** que fusiona l'administració de xarxes (Networking) amb el desenvolupament de programari (DevOps). En un entorn tradicional, els canvis es realitzen manualment node per node, el que genera inconsistències i errors humans.
+Python s'estableix com l'estàndard en l'orquestració de xarxes degut a la seva extensibilitat i l'existència de biblioteques específiques per a la interacció amb dispositius de xarxa via SSH/API:
 
-El cor de NetDevOps resideix en la **Infrastructure as Code (IaC)**. Això implica que l'estat desitjat de la xarxa es defineix en fitxers de text o codi Python, els quals s'executen per a configurar els dispositius de forma predictible i repetible.
+*   **Netmiko:** Llibreria multi-venedor que simplifica la gestió de connexions SSH, gestionant automàticament els prompts i l'execució de comandes privilegiades.
+*   **Sintaxi:** Permet l'escriptura de scripts imperatius per a tasques repetitives i validació d'estats.
 
-**Per què Python?**  
-Python s'ha consolidat com el llenguatge estàndard per a l'automatització de sistemes gràcies a la seua facilitat de lectura i a llibreries com `Netmiko`, `NAPALM` o `Nornir`, que gestionen les complexitats del protocol SSH i les diferències de sintaxi entre fabricants.
+# 2. Anàlisi de Casos d'Ús Reals
 
-2\. Casos d'Ús Reals i Tècnics
-------------------------------
+L'automatització s'aplica principalment per garantir la consistència, reduir el temps d'operació (OpEx) i mitigar l'error humà.
 
-### A. Gestió de Compliance i Auditoria
+## 2.1 Gestió de Compliment i Còpies de Seguretat (Backup & Compliance)
 
-Les empreses han de complir amb normatives de seguretat. Un script de Python pot connectar-se a 50 switchos cada nit, descarregar la configuració i comparar-la amb un fitxer "mestre". Si hi ha canvis no autoritzats, l'script envia una alerta immediata.
+*   **Escenari Tècnic:** Necessitat de mantenir un històric de configuracions (*running-config*) de tot el parc de dispositius per a recuperació davant desastres.
+*   **Implementació NetDevOps:** Execució programada (*cronjob*) d'un script Python que itera sobre un inventari d'IPs, estableix connexió SSH, extreu la configuració i l'emmagatzema en un repositori centralitzat amb control de versions (Git) i marca temporal.
 
-### B. Orquestració de VLANs en Data Centers
+## 2.2 Desplegament Massiu de Configuracions (Configuration Management)
 
-En entorns virtualitzats, cal crear VLANs constantment. En lloc d'entrar a cada switch del rack, un script de NetDevOps rep una sol·licitud del departament de virtualització i crea la VLAN i l'etiquetatge (tagging) en tots els nodes afectats en menys de 10 segons.
+*   **Escenari Tècnic:** Actualització de polítiques de seguretat (ex: canvi de servidors NTP, rotació de claus SNMP o creació d'usuaris locals) en múltiples nodes.
+*   **Implementació NetDevOps:** L'script llegeix els paràmetres desitjats i aplica els canvis de forma concurrent o seqüencial, verificant posteriorment que el canvi s'ha aplicat correctament mitjançant anàlisi de la sortida (*parsing*).
 
-### C. Validació de Salut Post-Canvi
+## 2.3 Validació Operativa (State Validation)
 
-Després d'una finestra de manteniment, l'enginyer ha de comprovar que tot funciona. L'automatització permet verificar en un segon si tots els veïnats BGP estan actius i si hi ha errors en les interfícies físiques.
+*   **Escenari Tècnic:** Verificació prèvia i posterior a una finestra de manteniment.
+*   **Implementació NetDevOps:** Automatització de la recollida de mètriques d'estat (estat de les interfícies, ús de CPU, taules d'enrutament). L'automatització compara l'estat actual amb un estat desitjat definit (*Golden State*) i alerta en cas de desviació.
 
-3\. Disseny del Laboratori Virtual (Sense Privilegis d'Admin)
--------------------------------------------------------------
+# 3. Arquitectura del Laboratori Virtual
 
-Aquest laboratori està dissenyat per a funcionar completament dins de **VirtualBox**, utilitzant adreçament IP que evita conflictes amb la xarxa del centre.
+Ateses les restriccions de l'entorn (manca de permisos d'administrador al host i impossibilitat d'ús de contenidors Docker), es desplegarà una arquitectura basada en màquines virtuals (VM) sobre VirtualBox.
 
-### Taula de Paràmetres de Xarxa
+## 3.1 Topologia de Xarxa
 
-Element
+Es defineixen dos segments de xarxa diferenciats:
 
-Xarxa WAN (Adaptador Pont)
+1.  **Xarxa WAN (Accés):** `192.168.13.X/16` (DHCP). Proporciona accés a repositoris de programari.
+2.  **Xarxa de Gestió (OOB - Out of Band):** `172.16.1.0/24`. Segment aïllat per a la comunicació entre el node de control i els dispositius de xarxa.
 
-Xarxa Interna (Gestió OOB)
+## 3.2 Components del Sistema
 
-Rang Subxarxa
+*   **Control Node (Client):** Ubuntu 24.04 LTS. Executarà l'entorn Python.
+    *   IP Gestió: `172.16.1.10`
+*   **Managed Node (Router):** VyOS (Rolling Release). Sistema operatiu de xarxa basat en Debian, amb CLI estil Juniper/Cisco.
+    *   IP Gestió: `172.16.1.1`
 
-192.168.13.0/16
+# 4. Procediment d'Implementació
 
-172.16.1.0/24
+### Fase 1: Adquisició de Programari
 
-Assignació
+Descarregar les imatges ISO necessàries (enllaços validats a 12/02/2026):
 
-DHCP (Router Classe)
+*   **Control Node:** Ubuntu 24.04.3 LTS Desktop.
+    *   Font: Ubuntu Releases
+*   **Router Node:** VyOS Rolling Release (Nightly Build).
+    *   Font: VyOS Nightly Builds (Seleccionar l'última imatge .iso disponible).
 
-Estàtica (Manual)
+### Fase 2: Configuració de l'Hipervisor (VirtualBox)
 
-Finalitat
+**2.1 Configuració VM "Control-Node" (Ubuntu)**
 
-Accés a Internet / Descarregues
+*   **Recursos:** 4096 MB RAM, 25 GB HDD.
+*   **Interfícies de Xarxa:**
+    *   Adaptador 1: "Adaptador Pont" (*Bridged Adapter*). Seleccionar la interfície física del host. (Assignació DHCP `192.168.13.X`).
+    *   Adaptador 2: "Xarxa Interna" (*Internal Network*). Nom del segment: `netdevops-lab`.
+    *   Mode Promiscu: Permetre tot (*Allow All*) per a l'Adaptador 2.
 
-Comunicació Python <-> Router
+**2.2 Configuració VM "VyOS-Router"**
 
-4\. Activitats Detallades i Guiades (100% Complet)
---------------------------------------------------
+*   **Recursos:** 512 MB RAM, 4 GB HDD.
+*   **Interfícies de Xarxa:**
+    *   Adaptador 1: "Xarxa Interna". Nom del segment: `netdevops-lab`.
 
-### Pas 1: Descàrrega i Obtenció d'Imatges
+### Fase 3: Desplegament i Configuració Base
 
-Necessitareu descarregar les següents imatges ISO al vostre disc local:
+**3.1 Instal·lació del Control Node (Ubuntu)**
 
-*   **Control Node:** [Ubuntu Desktop 24.04.3 LTS](https://releases.ubuntu.com/24.04/) (Aprox. 4GB).
-*   **Network Node:** [VyOS 1.5 Rolling](https://vyos.net/get/nightly-builds/) (Busqueu l'última ISO del 2026).
+1.  Realitzar la instal·lació estàndard del sistema operatiu.
+2.  Configurar l'adreçament IP estàtic per a la xarxa de gestió (Adaptador 2):
+    *   IPv4: `172.16.1.10`
+    *   Màscara: `255.255.255.0`
+    *   Gateway: Buit.
+3.  Instal·lar les dependències de desenvolupament:
 
-### Pas 2: Instal·lació de les Màquines Virtuals
+```bash
+sudo apt update
+sudo apt install python3-pip python3-venv git -y
+```
 
-Configuració de la VM Ubuntu (Control):
+**3.2 Instal·lació del Managed Node (VyOS)**
 
-1.  Crear VM: Tipus Linux / Ubuntu 64-bit. RAM: 4GB. Disc: 25GB.
-2.  **Xarxa Adaptador 1:** Mode "Adaptador Pont" (Bridged). Això us donarà IP 192.168.13.X.
-3.  **Xarxa Adaptador 2:** Mode "Xarxa Interna". Nom: `netdevops-lab`.
-4.  Instal·leu Ubuntu seguint els passos per defecte. Una vegada instal·lat, aneu a la configuració de xarxa i poseu a la segona targeta la IP `172.16.1.10/24`.
+1.  Iniciar la VM i accedir amb credencials per defecte (`vyos`/`vyos`).
+2.  Executar la instal·lació persistent: `install image`. Seguir els passos per defecte i reiniciar.
+3.  Configurar la interfície i el servei SSH:
 
-Configuració de la VM VyOS (Router):
-
-1.  Crear VM: Tipus Linux / Debian 64-bit. RAM: 1GB. Disc: 4GB.
-2.  **Xarxa Adaptador 1:** Mode "Xarxa Interna". Nom: `netdevops-lab`.
-3.  Arrenqueu amb la ISO i entreu amb usuari `vyos` / clau `vyos`.
-4.  Executeu `install image`, accepteu les opcions i reinicieu sense la ISO.
-5.  Configureu el router amb les comandes següents:
-
+```bash
 configure
-set interfaces ethernet eth0 address 172.16.1.1/24
-set service ssh port 22
+set interfaces ethernet eth0 address '172.16.1.1/24'
+set interfaces ethernet eth0 description 'MGMT_LINK'
+set service ssh port '22'
 commit
 save
 exit
-    
+```
 
-### Pas 3: Configuració de l'Entorn de Desenvolupament
+4.  **Validació:** Des de la terminal d'Ubuntu, executar `ping 172.16.1.1`. La connectivitat és requisit indispensable per continuar.
 
-A la VM Ubuntu, obriu la terminal i prepareu l'entorn de Python:
+# 5. Desenvolupament d'Automatització (Python + Netmiko)
 
-\# Actualitzar repositoris
-sudo apt update && sudo apt install python3-pip python3-venv git -y
+Totes les activitats es realitzen des del Control Node.
 
-# Crear directori de treball i entorn virtual
-mkdir ~/netdevops\_curs && cd ~/netdevops\_curs
+**Preparació de l'Entorn Virtual:**
+
+```bash
+mkdir ~/netdevops_project
+cd ~/netdevops_project
 python3 -m venv venv
 source venv/bin/activate
-
-# Instal·lar llibreria d'automatització
 pip install netmiko
-    
+```
 
-### Pas 4: Exercicis Pràctics d'Automatització
+### Activitat A: Extracció d'Informació (Read Operations)
 
-#### Exercici 4.1: Script de Lectura de Versió (get\_info.py)
+**Objectiu:** Establir una sessió SSH i recuperar informació del sistema sense realitzar canvis.
 
-Aquest script verifica que podem entrar al router i llegir dades.
+**Codi:** `get_version.py`
 
+```python
 from netmiko import ConnectHandler
 
-dispositiu = {
-    'device\_type': 'vyos',
-    'host': '172.16.1.1',
+# Definició del diccionari de connexió
+device = {
+    'device_type': 'vyos',  # Driver específic per a VyOS
+    'host':   '172.16.1.1',
+    'username': 'vyos',
+    'password': 'vyos',
+    'port': 22,
+}
+
+# Instanciació de la connexió
+connection = ConnectHandler(**device)
+
+# Execució de comanda operativa
+output = connection.send_command("show version")
+
+print("Resultat de la consulta:")
+print(output)
+
+connection.disconnect()
+```
+
+### Activitat B: Automatització de Configuració (Write Operations)
+
+**Objectiu:** Modificar l'estat del dispositiu de forma programàtica. Es canviarà el hostname i es crearà una interfície lògica (Loopback).
+
+**Codi:** `configure_device.py`
+
+```python
+from netmiko import ConnectHandler
+
+device = {
+    'device_type': 'vyos',
+    'host':   '172.16.1.1',
     'username': 'vyos',
     'password': 'vyos',
 }
 
-print("Connectant al router...")
-with ConnectHandler(\*\*dispositiu) as net\_connect:
-    output = net\_connect.send\_command("show version")
-    print("\\nResultat de la comanda:")
-    print(output)
-    
+# Llista de comandes de configuració (Sintaxi VyOS)
+config_set = [
+    'set system host-name ROUTER-LAB-01',
+    'set interfaces dummy dum0 address 10.0.0.1/32',
+    'set interfaces dummy dum0 description "Managed by Python"'
+]
 
-#### Exercici 4.2: Script de Configuració Masiva (setup\_network.py)
+connection = ConnectHandler(**device)
 
-Crearem una interfície Loopback i canviarem el nom del router de forma programàtica.
+# send_config_set gestiona automàticament els modes (configure -> set -> commit -> exit)
+output = connection.send_config_set(config_set)
 
+print("Registre de canvis aplicats:")
+print(output)
+
+# Verificació post-canvi
+verify = connection.send_command("show interfaces")
+print("\nEstat actual de les interfícies:")
+print(verify)
+
+connection.disconnect()
+```
+
+### Activitat C: Procediment de Backup (File Operations)
+
+**Objectiu:** Extreure la configuració completa i persistir-la en un fitxer local amb marcatge temporal per a auditoria.
+
+**Codi:** `backup_routine.py`
+
+```python
 from netmiko import ConnectHandler
-
-dispositiu = {
-    'device\_type': 'vyos',
-    'host': '172.16.1.1',
-    'username': 'vyos',
-    'password': 'vyos',
-}
-
-config\_set = \[
-    'set system host-name ROUTER-ACADEMIC-01',
-    'set interfaces dummy dum0 address 10.255.255.1/32',
-    'set system ntp server pool.ntp.org'
-\]
-
-with ConnectHandler(\*\*dispositiu) as net\_connect:
-    print("Aplicant canvis...")
-    # send\_config\_set entra en mode configure i fa commit automàtic
-    resultat = net\_connect.send\_config\_set(config\_set)
-    print(resultat)
-    
-    # Verificació final
-    print(net\_connect.send\_command("show interfaces"))
-    
-
-#### Exercici 4.3: Script de Backup Automatitzat (backup\_manager.py)
-
-Aquest script genera un fitxer amb la configuració actual i la marca temporal.
-
-from netmiko import ConnectHandler
-from datetime import datetime
+import datetime
 import os
 
-dispositiu = {
-    'device\_type': 'vyos',
-    'host': '172.16.1.1',
+device = {
+    'device_type': 'vyos',
+    'host':   '172.16.1.1',
     'username': 'vyos',
     'password': 'vyos',
 }
 
-ara = datetime.now().strftime("%Y-%m-%d\_%H-%M")
-nom\_fitxer = f"config\_backup\_{ara}.txt"
+# Generació de nom de fitxer dinàmic
+timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+filename = f"config_backup_{timestamp}.txt"
 
-with ConnectHandler(\*\*dispositiu) as net\_connect:
-    configuracio = net\_connect.send\_command("show configuration")
-    
-    with open(nom\_fitxer, "w") as f:
-        f.write(configuracio)
-    
-    print(f"Backup realitzat amb èxit: {os.getcwd()}/{nom\_fitxer}")
-    
+connection = ConnectHandler(**device)
 
-© 2026 - Guia de NetDevOps per a Alumnes de Xarxes. Material acadèmic amb llicència Open-Access.
+# Extracció de la configuració
+# Nota: VyOS utilitza 'show configuration' per veure l'estructura completa
+config_data = connection.send_command("show configuration")
+
+# Escriptura en disc
+with open(filename, 'w') as file:
+    file.write(config_data)
+
+print(f"Operació completada. Arxiu generat: {os.path.abspath(filename)}")
+
+connection.disconnect()
+```
+
+# 6. Conclusions Tècniques
+
+La implementació d'aquest laboratori demostra la viabilitat de l'automatització de xarxes en entorns restringits mitjançant l'ús d'eines de codi obert. L'arquitectura desplegada permet l'escalabilitat horitzontal (afegir més routers VyOS a la xarxa interna) i l'evolució cap a scripts complexos que incloguin bucles de control, gestió d'errors (Try/Except) i lectura d'inventaris externs (CSV/YAML).
